@@ -1,0 +1,17 @@
+{
+  "name": "@consentkit/db",
+  "version": "0.0.1",
+  "main": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.30.0",
+    "@neondatabase/serverless": "^0.9.0"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.20.0",
+    "typescript": "^5.4.0"
+  }
+}
