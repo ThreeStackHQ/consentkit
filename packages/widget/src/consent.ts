@@ -86,6 +86,13 @@ function shouldShowBanner(config: DomainConfig, countryCode: string | null): boo
   return false;
 }
 
+// BUG-001 FIX: map widget action values to server API contract
+function mapAction(action: ConsentState["action"]): "accept" | "reject" | "partial" {
+  if (action === "accept_all") return "accept";
+  if (action === "reject_all") return "reject";
+  return "partial"; // "custom" or null treated as partial
+}
+
 async function recordConsent(
   apiBase: string,
   apiKey: string,
@@ -98,9 +105,9 @@ async function recordConsent(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        key: apiKey,
+        apiKey,                    // BUG-001 FIX: was "key", must be "apiKey"
         visitorId,
-        action: state.action,
+        action: mapAction(state.action), // BUG-001 FIX: map to server enum values
         categories: {
           necessary: state.necessary,
           analytics: state.analytics,

@@ -48,9 +48,12 @@ export function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
+  // SEC-003 FIX: prefer cf-connecting-ip (Cloudflare-set, not client-spoofable)
+  // x-forwarded-for can be appended by clients; cf-connecting-ip is authoritative
   const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("cf-connecting-ip") ??
     req.headers.get("x-real-ip") ??
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     "unknown";
 
   if (isRateLimited(ip)) {

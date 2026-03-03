@@ -3,7 +3,17 @@ import { createHmac } from "crypto";
 import { Resend } from "resend";
 import { db } from "@consentkit/db";
 import { workspaces, domains, consentLogs, users } from "@consentkit/db";
-import { eq, gte, and, ne } from "drizzle-orm";
+import { eq, gte, lt, and } from "drizzle-orm";
+
+// SEC-002 FIX: Escape user-supplied strings before embedding in HTML email
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
 
 function buildUnsubscribeToken(workspaceId: string): string {
   const secret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET ?? "";
@@ -30,7 +40,7 @@ function buildDigestHtml(params: {
     .map(
       (ds) => `
     <div style="margin-bottom:24px;padding:20px;background:#1e1b4b;border-radius:8px;">
-      <h3 style="color:#a5b4fc;margin:0 0 12px;font-size:16px;">${ds.domain}</h3>
+      <h3 style="color:#a5b4fc;margin:0 0 12px;font-size:16px;">${escapeHtml(ds.domain)}</h3>
       <table width="100%" cellpadding="8" cellspacing="0">
         <tr>
           <td style="color:#94a3b8;font-size:13px;">Visitors this week</td>
@@ -46,7 +56,7 @@ function buildDigestHtml(params: {
         </tr>
         ${
           ds.topCountries.length > 0
-            ? `<tr><td style="color:#94a3b8;font-size:13px;">Top countries</td><td style="color:#e2e8f0;font-size:13px;text-align:right;">${ds.topCountries.map((c) => `${c.country} (${c.count})`).join(", ")}</td></tr>`
+            ? `<tr><td style="color:#94a3b8;font-size:13px;">Top countries</td><td style="color:#e2e8f0;font-size:13px;text-align:right;">${ds.topCountries.map((c) => `${escapeHtml(c.country)} (${c.count})`).join(", ")}</td></tr>`
             : ""
         }
       </table>
@@ -64,7 +74,7 @@ function buildDigestHtml(params: {
         <tr><td style="background:#1e1b4b;border-radius:12px;padding:40px;border:1px solid #312e81;">
           <p style="color:#818cf8;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin:0 0 8px;">ConsentKit</p>
           <h1 style="color:#e2e8f0;font-size:22px;margin:0 0 8px;">Weekly Consent Report</h1>
-          <p style="color:#94a3b8;font-size:14px;margin:0 0 32px;">Hey ${userName}, here's how ${workspaceName} performed this week.</p>
+          <p style="color:#94a3b8;font-size:14px;margin:0 0 32px;">Hey ${escapeHtml(userName)}, here&#x27;s how ${escapeHtml(workspaceName)} performed this week.</p>
 
           ${domainRows}
 
@@ -140,11 +150,12 @@ export async function POST(req: NextRequest) {
           columns: { action: true, countryCode: true },
         });
 
+        // BUG-002 FIX: use proper date range (lastWeekStart..thisWeekStart) for last week
         const lastWeekLogs = await db.query.consentLogs.findMany({
           where: and(
             eq(consentLogs.domainId, d.id),
             gte(consentLogs.createdAt, lastWeekStart),
-            // Only last week range
+            lt(consentLogs.createdAt, thisWeekStart),
           ),
           columns: { action: true },
         });
@@ -164,9 +175,9 @@ export async function POST(req: NextRequest) {
           .slice(0, 3)
           .map(([country, count]) => ({ country, count }));
 
-        // Last week stats (approx: first half of lastWeekLogs)
-        const lastTotal = Math.max(0, lastWeekLogs.length - thisTotal);
-        const lastAccepted = Math.max(0, lastWeekLogs.filter((l) => l.action === "accept").length - thisAccepted);
+        // Last week stats (BUG-002 FIX: now using correct date-bounded query)
+        const lastTotal = lastWeekLogs.length;
+        const lastAccepted = lastWeekLogs.filter((l) => l.action === "accept").length;
 
         return {
           domain: d.domain,
